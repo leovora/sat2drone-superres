@@ -1,0 +1,6 @@
+
+Inserire immagini dataset.
+
+Posizionare in cartelle divise per:
+- Sentinel e Aeree ??
+- località ??
