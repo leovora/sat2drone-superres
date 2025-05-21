@@ -1,6 +1,24 @@
 
 Inserire immagini dataset.
 
-Posizionare in cartelle divise per:
-- Sentinel e Aeree ??
-- località ??
+Seguire la struttura:
+
+- BRISIGHELLA:
+    - Sentinel:
+        - Sentinel2_post_Brisighella_2m.tif
+        - Sentinel2_pre_Brisighella_2m.tif
+    - Aerial:
+        - BRISIGHELLA_cgr_2023_2m.tif
+        - BRISIGHELLA_agea_2020_2m.tif
+
+- CASOLA_VALSENIO:
+    - Sentinel:
+        ...
+    - Aerial:
+        ...
+
+- MODIGLIANA:
+    ...
+
+- PREDAPPIO:
+    ...

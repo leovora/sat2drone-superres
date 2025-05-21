@@ -3,86 +3,112 @@ import random
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
-import torchvision.transforms.functional as TF
 import tifffile as tiff
 
 
 class PatchDataset(Dataset):
     def __init__(self, sentinel_paths, aerial_paths, patch_size=128, transform=True, normalize=True):
-        """
-        :param sentinel_paths: lista di path alle immagini Sentinel
-        :param aerial_paths: lista di path alle immagini aeree (stessa lunghezza)
-        :param patch_size: dimensione del patch quadrato (default 128x128)
-        :param transform: se True, applica data augmentation
-        :param normalize: se True, normalizza i valori dei pixel
-        """
         assert len(sentinel_paths) == len(aerial_paths), "Liste di immagini disallineate."
-        self.sentinel_paths = sentinel_paths
-        self.aerial_paths = aerial_paths
         self.patch_size = patch_size
         self.transform = transform
         self.normalize = normalize
 
-        # Carica metadati sulle dimensioni
         self.images_info = []
-        for s_path, a_path in zip(self.sentinel_paths, self.aerial_paths):
+        for s_path, a_path in zip(sentinel_paths, aerial_paths):
             sentinel = tiff.imread(s_path)
-            h, w = sentinel.shape[1:] if sentinel.ndim == 3 else sentinel.shape
-            self.images_info.append({
-                "sentinel_path": s_path,
-                "aerial_path": a_path,
-                "shape": (h, w)
-            })
+            aerial = tiff.imread(a_path)
+
+            # Trasponi per ottenere (C, H, W)
+            if sentinel.ndim == 3:
+                sentinel = np.transpose(sentinel, (2, 0, 1))
+            elif sentinel.ndim == 2:
+                sentinel = sentinel[np.newaxis, :, :]
+            else:
+                continue  # skip formato non valido
+
+            if aerial.ndim == 3:
+                aerial = np.transpose(aerial, (2, 0, 1))
+            elif aerial.ndim == 2:
+                aerial = aerial[np.newaxis, :, :]
+            else:
+                continue  # skip formato non valido
+
+            # Check dimensioni minime
+            _, h_s, w_s = sentinel.shape
+            _, h_a, w_a = aerial.shape
+            h, w = min(h_s, h_a), min(w_s, w_a)
+
+            if h >= patch_size and w >= patch_size:
+                self.images_info.append({
+                    "sentinel_path": s_path,
+                    "aerial_path": a_path,
+                    "shape": (h, w)
+                })
 
     def __len__(self):
-        return len(self.sentinel_paths)
+        return len(self.images_info)
 
     def __getitem__(self, idx):
-        # Scegli random una coppia di immagini
-        info = random.choice(self.images_info)
-        sentinel = tiff.imread(info["sentinel_path"]).astype(np.float32)
-        aerial = tiff.imread(info["aerial_path"]).astype(np.float32)
+        for _ in range(10):  # massimo 10 tentativi
+            info = self.images_info[idx]
+            sentinel = tiff.imread(info["sentinel_path"]).astype(np.float32)
+            aerial = tiff.imread(info["aerial_path"]).astype(np.float32)
 
-        # Gestione canali singoli
-        if sentinel.ndim == 2: sentinel = np.expand_dims(sentinel, axis=0)
-        if aerial.ndim == 2: aerial = np.expand_dims(aerial, axis=0)
+            # (C, H, W)
+            if sentinel.ndim == 3:
+                sentinel = np.transpose(sentinel, (2, 0, 1))
+            elif sentinel.ndim == 2:
+                sentinel = sentinel[np.newaxis, :, :]
 
-        h, w = info["shape"]
-        ps = self.patch_size
+            if aerial.ndim == 3:
+                aerial = np.transpose(aerial, (2, 0, 1))
+            elif aerial.ndim == 2:
+                aerial = aerial[np.newaxis, :, :]
 
-        # Trova una posizione valida (evita bordi) -- TODO: trovare alternativa migliore (padding?)
-        x = random.randint(0, w - ps)
-        y = random.randint(0, h - ps)
+            ps = self.patch_size
+            h, w = info["shape"]
 
-        # Estrai patch
-        sentinel_patch = sentinel[:, y:y+ps, x:x+ps]
-        aerial_patch = aerial[:, y:y+ps, x:x+ps]
+            # Coordinate valide
+            if h - ps <= 0 or w - ps <= 0:
+                continue
 
-        # Gestione valori NaN o infiniti
-        if np.isnan(sentinel_patch).any() or np.isnan(aerial_patch).any():
-            return self.__getitem__(idx)  # Skippa patch non valide
+            x = random.randint(0, w - ps)
+            y = random.randint(0, h - ps)
 
-        if self.normalize:
-            sentinel_patch = (sentinel_patch - np.mean(sentinel_patch)) / (np.std(sentinel_patch) + 1e-8)
-            aerial_patch = (aerial_patch - np.mean(aerial_patch)) / (np.std(aerial_patch) + 1e-8)
+            sentinel_patch = sentinel[:, y:y+ps, x:x+ps]
+            aerial_patch = aerial[:, y:y+ps, x:x+ps]
 
-        # Data augmentation
-        if self.transform:
-            if random.random() > 0.5:
-                sentinel_patch = np.flip(sentinel_patch, axis=2)
-                aerial_patch = np.flip(aerial_patch, axis=2)
-            if random.random() > 0.5:
-                sentinel_patch = np.flip(sentinel_patch, axis=1)
-                aerial_patch = np.flip(aerial_patch, axis=1)
-            if random.random() > 0.5:
-                sentinel_patch = np.rot90(sentinel_patch, k=1, axes=(1, 2))
-                aerial_patch = np.rot90(aerial_patch, k=1, axes=(1, 2))
+            # Skip se shape errata
+            if sentinel_patch.shape[1:] != (ps, ps) or aerial_patch.shape[1:] != (ps, ps):
+                continue
 
-        # Converti in tensor
-        return torch.from_numpy(sentinel_patch), torch.from_numpy(aerial_patch)
+            # Skip se contiene NaN o inf
+            if not np.isfinite(sentinel_patch).all() or not np.isfinite(aerial_patch).all():
+                continue
+
+            # Normalizzazione
+            if self.normalize:
+                sentinel_patch = (sentinel_patch - sentinel_patch.mean()) / (sentinel_patch.std() + 1e-8)
+                aerial_patch = (aerial_patch - aerial_patch.mean()) / (aerial_patch.std() + 1e-8)
+
+            # Augmentation
+            if self.transform:
+                if random.random() > 0.5:
+                    sentinel_patch = np.flip(sentinel_patch, axis=2)
+                    aerial_patch = np.flip(aerial_patch, axis=2)
+                if random.random() > 0.5:
+                    sentinel_patch = np.flip(sentinel_patch, axis=1)
+                    aerial_patch = np.flip(aerial_patch, axis=1)
+                if random.random() > 0.5:
+                    sentinel_patch = np.rot90(sentinel_patch, k=1, axes=(1, 2))
+                    aerial_patch = np.rot90(aerial_patch, k=1, axes=(1, 2))
+
+            return torch.from_numpy(sentinel_patch.copy()), torch.from_numpy(aerial_patch.copy())
+
+        raise RuntimeError(f"Impossibile estrarre una patch valida per idx {idx}")
 
 
-# Uso tipico del DataLoader
+
 def create_dataloader(sentinel_paths, aerial_paths, batch_size=16, shuffle=True, num_workers=4):
-    dataset = PatchDataset(sentinel_paths, aerial_paths)
+    dataset = PatchDataset(sentinel_paths, aerial_paths,transform=True, normalize=True)
     return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
