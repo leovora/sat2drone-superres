@@ -1,10 +1,13 @@
-from dataloader import create_dataloaders, sentinel_list, aerial_list
-from utils import show_tensor_images, compute_mse
-import unet, vit
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
+import tifffile as tiff
+
+from dataloader import create_dataloaders, sentinel_list, aerial_list
+from utils import show_tensor_images, compute_mse
+import unet
+# import vit  # opzionale se vuoi usare Vision Transformer
 
 
 def train(model, dataloader, optimizer, criterion, device):
@@ -46,15 +49,39 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
     print("Using device:", device)
 
+    # Infer number of input channels from Sentinel image
+    sample_input = tiff.imread(sentinel_list[0])
+    if sample_input.ndim == 2:
+        in_channels = 1
+    elif sample_input.ndim == 3:
+        in_channels = sample_input.shape[2]
+    else:
+        raise ValueError("Formato immagine Sentinel non supportato")
+
+    # Infer number of output channels from Aerial image
+    sample_output = tiff.imread(aerial_list[0])
+    if sample_output.ndim == 2:
+        out_channels = 1
+    elif sample_output.ndim == 3:
+        out_channels = sample_output.shape[2]
+    else:
+        raise ValueError("Formato immagine Aerea non supportato")
+
+    print(f"Inferred input channels: {in_channels}")
+    print(f"Inferred output channels: {out_channels}")
+
+    # Create dataloaders
     train_loader, val_loader, test_loader = create_dataloaders(sentinel_list, aerial_list, batch_size=8)
 
-    # Scegli il modello
-    model = unet(in_channels=sentinel_list[0].count("tif"), out_channels=3).to(device)
-    # model = vit(in_channels=sentinel_list[0].count("tif"), out_channels=3, image_size=128).to(device)
+    # Initialize model
+    model = unet.UNet(in_channels=in_channels, out_channels=out_channels).to(device)
+    # model = vit.ViT(in_channels=in_channels, out_channels=out_channels, image_size=128).to(device)
 
+    # Loss & Optimizer
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
+    # Training loop
     epochs = 5
     for epoch in range(epochs):
         print(f"\nEpoch {epoch + 1}/{epochs}")
@@ -64,11 +91,11 @@ def main():
         val_loss = evaluate(model, val_loader, criterion, device, show_images=(epoch == epochs - 1))
         print(f"Validation Loss: {val_loss:.4f}")
 
-    # Esempio: MSE finale su test set
+    # Final test evaluation
     test_loss = evaluate(model, test_loader, criterion, device)
     print(f"\nTest Loss (MSE): {test_loss:.4f}")
 
-    # Mostra un esempio finale
+    # Show one example
     evaluate(model, test_loader, criterion, device, show_images=True)
 
 

@@ -87,7 +87,7 @@ class PatchGridDataset(Dataset):
                 sentinel = sentinel + noise
                 aerial = aerial + noise
 
-        return torch.from_numpy(sentinel.copy()), torch.from_numpy(aerial.copy())
+        return torch.tensor(sentinel.copy(), dtype=torch.float32), torch.tensor(aerial.copy(), dtype=torch.float32)
 
 
 def create_dataloaders(sentinel_paths, aerial_paths, batch_size=32, val_ratio=0.1, test_ratio=0.1, num_workers=0, **kwargs):
