@@ -1,67 +1,76 @@
-from PatchDataset import create_dataloaders
-import matplotlib.pyplot as plt
+from dataloader import create_dataloaders, sentinel_list, aerial_list
+from utils import show_tensor_images, compute_mse
+import unet, vit
 import torch
+import torch.nn as nn
+import torch.optim as optim
+from tqdm import tqdm
 
-def show_tensor_image(sentinel_tensor, aerial_tensor):
-    def normalize_img(tensor):
-        img = tensor[:3].numpy()  # Prende solo i primi 3 canali
-        img = (img - img.min()) / (img.max() - img.min() + 1e-8)
-        return img.transpose(1, 2, 0)  # (H, W, C)
 
-    sentinel_img = normalize_img(sentinel_tensor)
-    aerial_img = normalize_img(aerial_tensor)
+def train(model, dataloader, optimizer, criterion, device):
+    model.train()
+    total_loss = 0.0
 
-    fig, axes = plt.subplots(1, 2, figsize=(10, 5))
-    axes[0].imshow(sentinel_img)
-    axes[0].set_title("Sentinel Patch")
-    axes[0].axis("off")
+    for x, y in tqdm(dataloader, desc="Training"):
+        x, y = x.to(device), y.to(device)
 
-    axes[1].imshow(aerial_img)
-    axes[1].set_title("Aerial Patch")
-    axes[1].axis("off")
+        optimizer.zero_grad()
+        y_pred = model(x)
+        loss = criterion(y_pred, y)
+        loss.backward()
+        optimizer.step()
 
-    plt.tight_layout()
-    plt.show()
+        total_loss += loss.item()
+
+    return total_loss / len(dataloader)
+
+
+def evaluate(model, dataloader, criterion, device, show_images=False):
+    model.eval()
+    total_loss = 0.0
+    with torch.no_grad():
+        for x, y in tqdm(dataloader, desc="Evaluating"):
+            x, y = x.to(device), y.to(device)
+            y_pred = model(x)
+            loss = criterion(y_pred, y)
+            total_loss += loss.item()
+
+            if show_images:
+                show_tensor_images(y_pred[0].cpu(), y[0].cpu(), x[0].cpu())
+                break
+
+    return total_loss / len(dataloader)
 
 
 def main():
-    sentinel_list = [
-        "../../data/BRISIGHELLA/Sentinel/Sentinel2_post_Brisighella_2m.tif",
-        "../../data/BRISIGHELLA/Sentinel/Sentinel2_pre_Brisighella_2m.tif",
-        "../../data/CASOLA_VALSENIO/Sentinel/Sentinel2_post_Casola_2m.tif",
-        "../../data/CASOLA_VALSENIO/Sentinel/Sentinel2_pre_Casola_2m.tif",
-        "../../data/MODIGLIANA/Sentinel/Sentinel2_post_modigliana_2m.tif",
-        "../../data/MODIGLIANA/Sentinel/Sentinel2_pre_modigliana_2m.tif",
-        "../../data/PREDAPPIO/Sentinel/Sentinel2_post_Predappio_2m.tif",
-        "../../data/PREDAPPIO/Sentinel/Sentinel2_pre_Predappio_2m.tif"
-    ]
+    device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+    print("Using device:", device)
 
-    aerial_list = [
-        "../../data/BRISIGHELLA/Aerial/BRISIGHELLA_cgr_2023_2m.tif",
-        "../../data/BRISIGHELLA/Aerial/BRISIGHELLA_agea_2020_2m.tif",
-        "../../data/CASOLA_VALSENIO/Aerial/CASOLA_VALSENIO_cgr_2023_2m.tif",
-        "../../data/CASOLA_VALSENIO/Aerial/CASOLA_VALSENIO_agea_2020_2m.tif",
-        "../../data/MODIGLIANA/Aerial/MODIGLIANA_cgr_2023_2m.tif",
-        "../../data/MODIGLIANA/Aerial/MODIGLIANA_agea_2020_2m.tif",
-        "../../data/PREDAPPIO/Aerial/PREDAPPIO_cgr_2023_2m.tif",
-        "../../data/PREDAPPIO/Aerial/PREDAPPIO_agea_2020_2m.tif"
-    ]
+    train_loader, val_loader, test_loader = create_dataloaders(sentinel_list, aerial_list, batch_size=8)
 
-    train_loader, val_loader, test_loader = create_dataloaders(
-        sentinel_list,
-        aerial_list,
-        patch_size=128,
-        stride=64,
-        augment=True,
-        normalize=True,
-        batch_size=32
-    )
+    # Scegli il modello
+    model = unet(in_channels=sentinel_list[0].count("tif"), out_channels=3).to(device)
+    # model = vit(in_channels=sentinel_list[0].count("tif"), out_channels=3, image_size=128).to(device)
 
-    for batch in train_loader:
-        x_batch, y_batch = batch
-        show_tensor_image(x_batch[0], y_batch[0])
-        break
+    criterion = nn.MSELoss()
+    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+
+    epochs = 5
+    for epoch in range(epochs):
+        print(f"\nEpoch {epoch + 1}/{epochs}")
+        train_loss = train(model, train_loader, optimizer, criterion, device)
+        print(f"Train Loss: {train_loss:.4f}")
+
+        val_loss = evaluate(model, val_loader, criterion, device, show_images=(epoch == epochs - 1))
+        print(f"Validation Loss: {val_loss:.4f}")
+
+    # Esempio: MSE finale su test set
+    test_loss = evaluate(model, test_loader, criterion, device)
+    print(f"\nTest Loss (MSE): {test_loss:.4f}")
+
+    # Mostra un esempio finale
+    evaluate(model, test_loader, criterion, device, show_images=True)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

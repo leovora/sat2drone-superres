@@ -90,17 +90,40 @@ class PatchGridDataset(Dataset):
         return torch.from_numpy(sentinel.copy()), torch.from_numpy(aerial.copy())
 
 
-def create_dataloaders(sentinel_paths, aerial_paths, batch_size=32, val_ratio=0.1, test_ratio=0.1, **kwargs):
+def create_dataloaders(sentinel_paths, aerial_paths, batch_size=32, val_ratio=0.1, test_ratio=0.1, num_workers=0, **kwargs):
     dataset = PatchGridDataset(sentinel_paths, aerial_paths, **kwargs)
     n = len(dataset)
     n_val = int(n * val_ratio)
     n_test = int(n * test_ratio)
     n_train = n - n_val - n_test
-    
+
     train_ds, val_ds, test_ds = random_split(dataset, [n_train, n_val, n_test], generator=torch.Generator().manual_seed(42))
 
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
-    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
     return train_loader, val_loader, test_loader
+
+
+sentinel_list = [
+    "../../data/BRISIGHELLA/Sentinel/Sentinel2_post_Brisighella_2m.tif",
+    "../../data/BRISIGHELLA/Sentinel/Sentinel2_pre_Brisighella_2m.tif",
+    "../../data/CASOLA_VALSENIO/Sentinel/Sentinel2_post_Casola_2m.tif",
+    "../../data/CASOLA_VALSENIO/Sentinel/Sentinel2_pre_Casola_2m.tif",
+    "../../data/MODIGLIANA/Sentinel/Sentinel2_post_modigliana_2m.tif",
+    "../../data/MODIGLIANA/Sentinel/Sentinel2_pre_modigliana_2m.tif",
+    "../../data/PREDAPPIO/Sentinel/Sentinel2_post_Predappio_2m.tif",
+    "../../data/PREDAPPIO/Sentinel/Sentinel2_pre_Predappio_2m.tif"
+]
+
+aerial_list = [
+    "../../data/BRISIGHELLA/Aerial/BRISIGHELLA_cgr_2023_2m.tif",
+    "../../data/BRISIGHELLA/Aerial/BRISIGHELLA_agea_2020_2m.tif",
+    "../../data/CASOLA_VALSENIO/Aerial/CASOLA_VALSENIO_cgr_2023_2m.tif",
+    "../../data/CASOLA_VALSENIO/Aerial/CASOLA_VALSENIO_agea_2020_2m.tif",
+    "../../data/MODIGLIANA/Aerial/MODIGLIANA_cgr_2023_2m.tif",
+    "../../data/MODIGLIANA/Aerial/MODIGLIANA_agea_2020_2m.tif",
+    "../../data/PREDAPPIO/Aerial/PREDAPPIO_cgr_2023_2m.tif",
+    "../../data/PREDAPPIO/Aerial/PREDAPPIO_agea_2020_2m.tif"
+]
