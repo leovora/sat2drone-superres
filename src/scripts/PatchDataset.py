@@ -1,114 +1,106 @@
 import os
-import random
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, random_split
 import tifffile as tiff
+import random
 
-
-class PatchDataset(Dataset):
-    def __init__(self, sentinel_paths, aerial_paths, patch_size=128, transform=True, normalize=True):
+class PatchGridDataset(Dataset):
+    def __init__(self, sentinel_paths, aerial_paths, patch_size=128, stride=64, augment=True, normalize=True, max_patches_per_image=None):
         assert len(sentinel_paths) == len(aerial_paths), "Liste di immagini disallineate."
+
         self.patch_size = patch_size
-        self.transform = transform
+        self.stride = stride
+        self.augment = augment
         self.normalize = normalize
+        self.patches = []  # lista di (sentinel_patch, aerial_patch)
 
-        self.images_info = []
         for s_path, a_path in zip(sentinel_paths, aerial_paths):
-            sentinel = tiff.imread(s_path)
-            aerial = tiff.imread(a_path)
+            sentinel = tiff.imread(s_path).astype(np.float32)
+            aerial = tiff.imread(a_path).astype(np.float32)
 
-            # Trasponi per ottenere (C, H, W)
-            if sentinel.ndim == 3:
-                sentinel = np.transpose(sentinel, (2, 0, 1))
-            elif sentinel.ndim == 2:
-                sentinel = sentinel[np.newaxis, :, :]
-            else:
-                continue  # skip formato non valido
+            sentinel = self._prepare_image(sentinel)
+            aerial = self._prepare_image(aerial)
 
-            if aerial.ndim == 3:
-                aerial = np.transpose(aerial, (2, 0, 1))
-            elif aerial.ndim == 2:
-                aerial = aerial[np.newaxis, :, :]
-            else:
-                continue  # skip formato non valido
+            # Crop al minimo comune shape
+            h = min(sentinel.shape[1], aerial.shape[1])
+            w = min(sentinel.shape[2], aerial.shape[2])
+            sentinel = sentinel[:, :h, :w]
+            aerial = aerial[:, :h, :w]
 
-            # Check dimensioni minime
-            _, h_s, w_s = sentinel.shape
-            _, h_a, w_a = aerial.shape
-            h, w = min(h_s, h_a), min(w_s, w_a)
+            # Estrai patch a griglia
+            patches = self._extract_patches(sentinel, aerial)
+            if max_patches_per_image:
+                random.shuffle(patches)
+                patches = patches[:max_patches_per_image]
+            self.patches.extend(patches)
 
-            if h >= patch_size and w >= patch_size:
-                self.images_info.append({
-                    "sentinel_path": s_path,
-                    "aerial_path": a_path,
-                    "shape": (h, w)
-                })
+    def _prepare_image(self, img):
+        if img.ndim == 2:
+            img = img[np.newaxis, :, :]
+        elif img.ndim == 3:
+            img = np.transpose(img, (2, 0, 1))
+        return img
+
+    def _extract_patches(self, sentinel, aerial):
+        ps = self.patch_size
+        st = self.stride
+        patches = []
+        C, H, W = sentinel.shape
+
+        for y in range(0, H - ps + 1, st):
+            for x in range(0, W - ps + 1, st):
+                sp = sentinel[:, y:y + ps, x:x + ps]
+                ap = aerial[:, y:y + ps, x:x + ps]
+
+                if not np.isfinite(sp).all() or not np.isfinite(ap).all():
+                    continue
+                valid_ratio = np.count_nonzero(sp) / sp.size
+                if valid_ratio < 0.1:
+                    continue
+
+                if self.normalize:
+                    sp = (sp - sp.mean()) / (sp.std() + 1e-8)
+                    ap = (ap - ap.mean()) / (ap.std() + 1e-8)
+
+                patches.append((sp, ap))
+        return patches
 
     def __len__(self):
-        return len(self.images_info)
+        return len(self.patches)
 
     def __getitem__(self, idx):
-        for _ in range(10):  # massimo 10 tentativi
-            info = self.images_info[idx]
-            sentinel = tiff.imread(info["sentinel_path"]).astype(np.float32)
-            aerial = tiff.imread(info["aerial_path"]).astype(np.float32)
+        sentinel, aerial = self.patches[idx]
 
-            # (C, H, W)
-            if sentinel.ndim == 3:
-                sentinel = np.transpose(sentinel, (2, 0, 1))
-            elif sentinel.ndim == 2:
-                sentinel = sentinel[np.newaxis, :, :]
+        if self.augment:
+            if random.random() < 0.5:
+                sentinel = np.flip(sentinel, axis=1)
+                aerial = np.flip(aerial, axis=1)
+            if random.random() < 0.5:
+                sentinel = np.flip(sentinel, axis=2)
+                aerial = np.flip(aerial, axis=2)
+            if random.random() < 0.5:
+                sentinel = np.rot90(sentinel, k=1, axes=(1, 2))
+                aerial = np.rot90(aerial, k=1, axes=(1, 2))
+            if random.random() < 0.3:
+                noise = np.random.normal(0, 0.05, size=sentinel.shape)
+                sentinel = sentinel + noise
+                aerial = aerial + noise
 
-            if aerial.ndim == 3:
-                aerial = np.transpose(aerial, (2, 0, 1))
-            elif aerial.ndim == 2:
-                aerial = aerial[np.newaxis, :, :]
-
-            ps = self.patch_size
-            h, w = info["shape"]
-
-            # Coordinate valide
-            if h - ps <= 0 or w - ps <= 0:
-                continue
-
-            x = random.randint(0, w - ps)
-            y = random.randint(0, h - ps)
-
-            sentinel_patch = sentinel[:, y:y+ps, x:x+ps]
-            aerial_patch = aerial[:, y:y+ps, x:x+ps]
-
-            # Skip se shape errata
-            if sentinel_patch.shape[1:] != (ps, ps) or aerial_patch.shape[1:] != (ps, ps):
-                continue
-
-            # Skip se contiene NaN o inf
-            if not np.isfinite(sentinel_patch).all() or not np.isfinite(aerial_patch).all():
-                continue
-
-            # Normalizzazione
-            if self.normalize:
-                sentinel_patch = (sentinel_patch - sentinel_patch.mean()) / (sentinel_patch.std() + 1e-8)
-                aerial_patch = (aerial_patch - aerial_patch.mean()) / (aerial_patch.std() + 1e-8)
-
-            # Augmentation
-            if self.transform:
-                if random.random() > 0.5:
-                    sentinel_patch = np.flip(sentinel_patch, axis=2)
-                    aerial_patch = np.flip(aerial_patch, axis=2)
-                if random.random() > 0.5:
-                    sentinel_patch = np.flip(sentinel_patch, axis=1)
-                    aerial_patch = np.flip(aerial_patch, axis=1)
-                if random.random() > 0.5:
-                    sentinel_patch = np.rot90(sentinel_patch, k=1, axes=(1, 2))
-                    aerial_patch = np.rot90(aerial_patch, k=1, axes=(1, 2))
-
-            return torch.from_numpy(sentinel_patch.copy()), torch.from_numpy(aerial_patch.copy())
-
-        raise RuntimeError(f"Impossibile estrarre una patch valida per idx {idx}")
+        return torch.from_numpy(sentinel.copy()), torch.from_numpy(aerial.copy())
 
 
+def create_dataloaders(sentinel_paths, aerial_paths, batch_size=32, val_ratio=0.1, test_ratio=0.1, **kwargs):
+    dataset = PatchGridDataset(sentinel_paths, aerial_paths, **kwargs)
+    n = len(dataset)
+    n_val = int(n * val_ratio)
+    n_test = int(n * test_ratio)
+    n_train = n - n_val - n_test
+    
+    train_ds, val_ds, test_ds = random_split(dataset, [n_train, n_val, n_test], generator=torch.Generator().manual_seed(42))
 
-def create_dataloader(sentinel_paths, aerial_paths, batch_size=16, shuffle=True, num_workers=4):
-    dataset = PatchDataset(sentinel_paths, aerial_paths,transform=True, normalize=True)
-    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
+
+    return train_loader, val_loader, test_loader

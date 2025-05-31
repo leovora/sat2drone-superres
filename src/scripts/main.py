@@ -1,12 +1,10 @@
-from src.scripts.PatchDataset import create_dataloader
+from PatchDataset import create_dataloaders
 import matplotlib.pyplot as plt
 import torch
 
-import matplotlib.pyplot as plt
-
 def show_tensor_image(sentinel_tensor, aerial_tensor):
     def normalize_img(tensor):
-        img = tensor[:3].numpy()  # Prende solo i primi 3 canali (se ci sono)
+        img = tensor[:3].numpy()  # Prende solo i primi 3 canali
         img = (img - img.min()) / (img.max() - img.min() + 1e-8)
         return img.transpose(1, 2, 0)  # (H, W, C)
 
@@ -49,9 +47,17 @@ def main():
         "../../data/PREDAPPIO/Aerial/PREDAPPIO_agea_2020_2m.tif"
     ]
 
-    dataloader = create_dataloader(sentinel_list, aerial_list, batch_size=32)
+    train_loader, val_loader, test_loader = create_dataloaders(
+        sentinel_list,
+        aerial_list,
+        patch_size=128,
+        stride=64,
+        augment=True,
+        normalize=True,
+        batch_size=32
+    )
 
-    for batch in dataloader:
+    for batch in train_loader:
         x_batch, y_batch = batch
         show_tensor_image(x_batch[0], y_batch[0])
         break
