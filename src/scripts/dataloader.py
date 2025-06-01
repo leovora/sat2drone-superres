@@ -6,7 +6,7 @@ import tifffile as tiff
 import random
 
 class PatchGridDataset(Dataset):
-    def __init__(self, sentinel_paths, aerial_paths, patch_size=128, stride=64, augment=True, normalize=True, max_patches_per_image=None):
+    def __init__(self, sentinel_paths, aerial_paths, patch_size=128, stride=64, augment=True, normalize=True, max_patches_per_image=1000):
         assert len(sentinel_paths) == len(aerial_paths), "Liste di immagini disallineate."
 
         self.patch_size = patch_size
@@ -107,23 +107,19 @@ def create_dataloaders(sentinel_paths, aerial_paths, batch_size=32, val_ratio=0.
 
 
 sentinel_list = [
-    "../../data/BRISIGHELLA/Sentinel/Sentinel2_post_Brisighella_2m.tif",
-    "../../data/BRISIGHELLA/Sentinel/Sentinel2_pre_Brisighella_2m.tif",
-    "../../data/CASOLA_VALSENIO/Sentinel/Sentinel2_post_Casola_2m.tif",
-    "../../data/CASOLA_VALSENIO/Sentinel/Sentinel2_pre_Casola_2m.tif",
-    "../../data/MODIGLIANA/Sentinel/Sentinel2_post_modigliana_2m.tif",
-    "../../data/MODIGLIANA/Sentinel/Sentinel2_pre_modigliana_2m.tif",
-    "../../data/PREDAPPIO/Sentinel/Sentinel2_post_Predappio_2m.tif",
-    "../../data/PREDAPPIO/Sentinel/Sentinel2_pre_Predappio_2m.tif"
+    "/content/drive/MyDrive/ColabContent/data/PREDAPPIO/Sentinel/Sentinel2_post_Predappio_2m.tif",
+    "/content/drive/MyDrive/ColabContent/data/PREDAPPIO/Sentinel/Sentinel2_pre_Predappio_2m.tif",
+    "/content/drive/MyDrive/ColabContent/data/CASOLA_VALSENIO/Sentinel/Sentinel2_post_Casola_2m.tif",
+    "/content/drive/MyDrive/ColabContent/data/CASOLA_VALSENIO/Sentinel/Sentinel2_pre_Casola_2m.tif",
+    "/content/drive/MyDrive/ColabContent/data/MODIGLIANA/Sentinel/Sentinel2_post_modigliana_2m.tif",
+    "/content/drive/MyDrive/ColabContent/data/MODIGLIANA/Sentinel/Sentinel2_pre_Modigliana_2m.tif"
 ]
 
 aerial_list = [
-    "../../data/BRISIGHELLA/Aerial/BRISIGHELLA_cgr_2023_2m.tif",
-    "../../data/BRISIGHELLA/Aerial/BRISIGHELLA_agea_2020_2m.tif",
-    "../../data/CASOLA_VALSENIO/Aerial/CASOLA_VALSENIO_cgr_2023_2m.tif",
-    "../../data/CASOLA_VALSENIO/Aerial/CASOLA_VALSENIO_agea_2020_2m.tif",
-    "../../data/MODIGLIANA/Aerial/MODIGLIANA_cgr_2023_2m.tif",
-    "../../data/MODIGLIANA/Aerial/MODIGLIANA_agea_2020_2m.tif",
-    "../../data/PREDAPPIO/Aerial/PREDAPPIO_cgr_2023_2m.tif",
-    "../../data/PREDAPPIO/Aerial/PREDAPPIO_agea_2020_2m.tif"
+    "/content/drive/MyDrive/ColabContent/data/PREDAPPIO/Aerial/PREDAPPIO_cgr_2023_2m.tif",
+    "/content/drive/MyDrive/ColabContent/data/PREDAPPIO/Aerial/PREDAPPIO_agea_2020_2m.tif",
+    "/content/drive/MyDrive/ColabContent/data/CASOLA_VALSENIO/Aerial/CASOLA_VALSENIO_cgr_2023_2m.tif",
+    "/content/drive/MyDrive/ColabContent/data/CASOLA_VALSENIO/Aerial/CASOLA_VALSENIO_agea_2020_2m.tif",
+    "/content/drive/MyDrive/ColabContent/data/MODIGLIANA/Aerial/MODIGLIANA_cgr_2023_2m.tif",
+    "/content/drive/MyDrive/ColabContent/data/MODIGLIANA/Aerial/MODIGLIANA_agea_2020_2m.tif"
 ]

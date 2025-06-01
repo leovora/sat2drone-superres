@@ -4,11 +4,6 @@ import torch.optim as optim
 from tqdm import tqdm
 import tifffile as tiff
 
-from dataloader import create_dataloaders, sentinel_list, aerial_list
-from utils import show_tensor_images, compute_mse
-import unet
-# import vit  # opzionale se vuoi usare Vision Transformer
-
 
 def train(model, dataloader, optimizer, criterion, device):
     model.train()
@@ -74,7 +69,7 @@ def main():
     train_loader, val_loader, test_loader = create_dataloaders(sentinel_list, aerial_list, batch_size=8)
 
     # Initialize model
-    model = unet.UNet(in_channels=in_channels, out_channels=out_channels).to(device)
+    model = UNet(in_channels=in_channels, out_channels=out_channels).to(device)
     # model = vit.ViT(in_channels=in_channels, out_channels=out_channels, image_size=128).to(device)
 
     # Loss & Optimizer
@@ -82,7 +77,7 @@ def main():
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
     # Training loop
-    epochs = 5
+    epochs = 10
     for epoch in range(epochs):
         print(f"\nEpoch {epoch + 1}/{epochs}")
         train_loss = train(model, train_loader, optimizer, criterion, device)
